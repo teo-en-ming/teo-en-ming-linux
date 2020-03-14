@@ -1,1 +1,2 @@
-test
+Redundant ISO download links:
+https://drive.google.com/open?id=1amXoOHqkn8UlB06QWPMioZg7fqxD68n7

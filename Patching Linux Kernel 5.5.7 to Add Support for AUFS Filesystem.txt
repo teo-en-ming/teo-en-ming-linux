@@ -1,0 +1,364 @@
+Subject of Hint: Patching Linux Kernel 5.5.7 to Add Support for AUFS Filesystem
+
+ORIGINAL AUTHOR: JIMMY ANDERSON
+ORIGINAL DATE: 2013-01-20
+
+EDITED BY: TURRITOPSIS DOHRNII TEO EN MING, SINGAPORE
+EDIT DATE: 15 MAR 2020 SUNDAY
+
+MANDATORY PREREQUISITES
+=======================
+
+You *MUST* follow the guide/hint here first (COMPULSORY):
+
+http://lists.linuxfromscratch.org/pipermail/hints/2020-March/003334.html
+
+HINT
+====
+
+To obtain the aufs5 kernel patches, do the following:
+   
+$ sudo apt install git
+
+#------------ Cut and Paste start
+cd $LFS/sources
+git clone git://github.com/sfjro/aufs5-standalone.git \
+	aufs5-standalone.git
+cd aufs5-standalone.git
+git checkout -b origin/aufs5.5
+cp aufs5-*.patch ..
+rm -f include/uapi/linux/Kbuild
+tar cvfz $LFS/sources/aufs5.tar.gz Documentation fs include
+cd ..
+rm -rf aufs5-standalone.git
+#------------ Cut and Paste end
+
+Rebuilding your kernel
+======================
+
+   Follow the instructions in the LFS/BLFS book and build your LFS system
+as you normally would except that during the kernel build, after unpacking
+the source and cd'ing into the linux directory, you apply either 
+the unionfs or the aufs patches.  
+
+
+To apply aufs patches:
+#------------ Cut and Paste start
+cat ../aufs5-base.patch  |patch -Np1
+cat ../aufs5-kbuild.patch  |patch -Np1
+cat ../aufs5-mmap.patch  |patch -Np1
+cat ../aufs5-standalone.patch  |patch -Np1
+tar xvf ../aufs5.tar.gz
+#------------ Cut and Paste end
+
+When you configure the kernel, make sure the following are enabled 
+as builtins (not as modules):
+
+   SQUASHFS support (and support for SQUASHFS XZ compressed file systems).
+   UNIONFS or AUFS support (CONFIG_AUFS_FS=y)
+   CDROM support (ISO9660).
+   DEVTMPFS support.
+
+Then build and install as normal:
+#------------ Cut and Paste start
+make
+make modules_install
+cp arch/x86/boot/bzImage /boot/vmlinuz-5.5.7-turritopsis.dohrnii.teo.en.ming
+cp .config /boot/config-5.5.7            ***VERY VERY IMPORTANT TO HAVE A BACKUP OF YOUR KERNEL CONFIGURATION***
+#------------ Cut and Paste end
+
+Start compiling Linux Kernel 5.5.7: 8.20 PM
+End compiling Linux Kernel 5.5.7: 8.39 PM
+Duration: 19 mins on an AMD Ryzen 3 3200G processor with Radeon Vega 8 graphics, 
+Gigabyte B450M DS3H motherboard with BIOS version F41, and 32 GB Transcend DDR4-2666 RAM.
+
+Remake a squashed version of your LFS.
+======================================
+
+Exit the chroot and unmount any filesystems that are associated with
+the $LFS directory.   At this point, it is a good idea to do a system
+shutdown and restart to ensure that the LFS directory is unused and
+in a quiescent state.   Make sure LFS is set again after the reboot.
+
+#------------ Cut and Paste start
+# Set LFS value as needed...
+export LFS=/mnt/lfs
+cd /home/teo-en-ming
+echo $LFS
+rm -f root.sfs
+sudo mv /mnt/lfs/sources/ /home/teo-en-ming/
+sudo mksquashfs $LFS root.sfs -comp xz
+#------------ Cut and Paste end
+
+(omit the -comp xz if your squashfs tools don't support xz compression).
+
+MODIFY THE LIVE CD/DVD IMAGE
+============================
+
+cd /home/teo-en-ming/Downloads
+cp -v /home/teo-en-ming/root.sfs live/boot/$(uname -m)
+cp -v $LFS/boot/vmlinuz-5.5.7-turritopsis.dohrnii.teo.en.ming live/boot/$(uname -m)/vmlinuz
+
+Create the live CD/DVD iso image using whatever iso creation tool you
+have.   In this example, it is 'genisoimage':
+
+#------------ Cut and Paste start
+genisoimage -o teo-en-ming-linux-2020.03-final-live-cd-dvd.iso     \
+         -b boot/isolinux/isolinux.bin \
+         -c boot.cat                   \
+         -no-emul-boot                 \
+         -boot-load-size 4             \
+         -boot-info-table              \
+         -joliet -l -R                 \
+         live
+
+rm -rf live           ### OPTIONAL
+#------------ Cut and Paste end
+
+LIVE CD/DVD BOOTS WITH KERNEL PANIC
+===================================
+
+After patching Linux Kernel 5.5.7 to add support for AUFS filesystem, the generated Live CD/DVD still boots 
+with a kernel panic.
+
+The error message is as follows:
+
+"end Kernel panic - not syncing: Attempted to kill init! exit code=0x00000200"
+
+After hours of troubleshooting, I think that the problem may lie with the initramfs (busybox based ramdisk) or the following
+script init.sh. The following script init.sh may need to be modified to allow the Live CD/DVD to boot successfully.
+
+I hope that the LFS community would be able to spend some time looking at init.sh and modify it so that the resultant Live CD/DVD
+will be able to boot successfully.
+
+I would like to thank all of you in advance.
+
+The original script init.sh (8 years ago) is reproduced as follows:
+
+ADDENDUM: v Cut and save the remainder of this file as $LFS/sources/init.sh v
+#!/bin/busybox sh
+#
+# This file is a modified version of:
+#
+# Initramfs boot script 1.3.1 (2012-02-09)
+# Copyright (c) 2010-2012   Marcel van den Boer
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to
+# deal in the Software without restriction, including without limitation the
+# rights to use, copy, modify, merge, publish, distribute, sublicense, and/or
+# sell copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in
+# all copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+# FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS
+# IN THE SOFTWARE.
+
+# FS layout at the start of this script:
+# - /boot/id_label
+# - /bin/busybox
+# - /dev/console (created by kernel)
+# - /init (this file)
+
+set -e
+
+ARCH="<ARCH>"
+
+###########################################
+copyBindMount() { # COPY/BIND LIVECD MODE #
+###########################################
+
+# This function bind-mounts directories which are designed to be capable of
+# read-only access and copies the remaining directories to a tmpfs.
+#
+# The downside of this method is that the resulting root filesystem is not
+# fully writable. So, for example, installation of new programs will not be
+# possible.
+#
+# However, this function can be used without any modification to the kernel and
+# is therefore perfect for use as a fallback if other options are not available.
+
+# Mount a tmpfs where the new rootfs will be.
+mount -t tmpfs tmpfs ${ROOT} # Allows remounting root in the bootscripts
+
+# Bind mount read-only filesystems, copy the rest
+cd /mnt/system
+for dir in $(ls -1); do
+    case ${dir} in
+        lost+found)
+            ;;
+        bin | boot | lib | opt | sbin | usr)
+            mkdir ${ROOT}/${dir}
+            mount --bind ${dir} ${ROOT}/${dir}
+            ;;
+        *)
+            cp -R ${dir} ${ROOT}
+            ;;
+    esac
+done
+cd /
+
+##############################################
+}; unionMount() { # UNIONFS/AUFS LIVECD MODE #
+##############################################
+
+# A union mount takes one or more directories and combines them transparantly
+# in a third. This function creates a writable directory in memory (tmpfs) and
+# uses it to overlay the read-only system image, resulting in a fully writable
+# root file system.
+#
+# The only downside to this method is that it requires a union type filesystem
+# in the kernel, which can only be accomplished by patching the kernel as there
+# is no such feature in a vanilla kernel.
+
+mkdir -p /mnt/writable
+mount -t tmpfs -o rw tmpfs /mnt/writable
+
+UNIONFSOPT="/mnt/writable=rw:/mnt/system=ro"
+AUFSOPT="/mnt/writable=rw:/mnt/system=ro"
+mount -t unionfs -o dirs=${UNIONFSOPT} unionfs ${ROOT} 2> /dev/null || \
+mount -t aufs -o br=${AUFSOPT} none ${ROOT} 2> /dev/null || \
+{
+    # If UnionFS fails, fall back to copy/bind mounting
+    copyBindMount
+}
+
+######################
+} # END OF FUNCTIONS #
+######################
+
+# Make required applets easier to access
+for applet in cat chmod cp cut grep ls mkdir mknod mount umount switch_root \
+    rm mv vi cpio tar mke2fs sync fdisk dd ; do
+    /bin/busybox ln /bin/busybox /bin/${applet}
+done
+
+# Clear the screen
+#clear # Don't! This will clear the Linux boot logo when using a framebuffer.
+       # If you want to clear the screen on boot add the "clear" command to
+       # '/usr/share/live/sec_init.sh' in the system image.
+
+# Create device nodes required to run this script
+# Note: /dev/console will already be available in the ramfs
+mknod /dev/null c  1  3
+
+mknod /dev/scd0 b 11  0  # +--------
+mknod /dev/scd1 b 11  1  # |
+mknod /dev/scd2 b 11  2  # |
+mknod /dev/scd3 b 11  3  # |
+                         # |
+mknod /dev/hdc  b 22  0  # |
+                         # |
+mknod /dev/sda  b  8  0  # |
+mknod /dev/sda1 b  8  1  # |
+mknod /dev/sda2 b  8  2  # |
+mknod /dev/sda3 b  8  3  # |
+mknod /dev/sda4 b  8  4  # |
+                         # |
+mknod /dev/sdb  b  8 16  # |    <----
+mknod /dev/sdb1 b  8 17  # |        Devices which could be or contain the
+mknod /dev/sdb2 b  8 18  # |        boot medium...
+mknod /dev/sdb3 b  8 19  # |
+mknod /dev/sdb4 b  8 20  # |
+                         # |
+mknod /dev/sdc  b  8 32  # |
+mknod /dev/sdc1 b  8 33  # |
+mknod /dev/sdc2 b  8 34  # |
+mknod /dev/sdc3 b  8 35  # |
+mknod /dev/sdc4 b  8 36  # |
+                         # |
+mknod /dev/sdd  b  8 48  # |
+mknod /dev/sdd1 b  8 49  # |
+mknod /dev/sdd2 b  8 50  # |
+mknod /dev/sdd3 b  8 51  # |
+mknod /dev/sdd4 b  8 52  # +--------
+
+# Create mount points for filesystems
+mkdir -p /mnt/medium
+mkdir -p /mnt/system
+mkdir -p /mnt/rootfs
+
+# Mount the /proc filesystem (enables filesystem detection for 'mount')
+mkdir /proc
+mount -t proc proc /proc
+
+# Invoke busybox if requested via the kernel command line.
+if [ `grep -c "busybox" /proc/cmdline` -ne "0" ]; then 
+    echo "Busybox requested"; 
+    busybox sh
+fi
+
+# Search for, and mount the boot medium
+LABEL="$(cat /boot/id_label)"
+for device in $(ls /dev); do
+    [ "${device}" == "console" ] && continue
+    [ "${device}" == "null"    ] && continue
+
+    mount -o ro /dev/${device} /mnt/medium 2> /dev/null && \
+    if [ "$(cat /mnt/medium/boot/${ARCH}/id_label)" != "${LABEL}" ]; then
+        umount /mnt/medium
+    else
+        DEVICE="${device}"
+        break
+    fi
+done
+
+if [ "${DEVICE}" == "" ]; then
+    echo "FATAL: Boot medium not found."
+    /bin/busybox sh
+fi
+
+# Mount the system image
+mount -t squashfs -o ro,loop /mnt/medium/boot/${ARCH}/root.sfs /mnt/system || {
+    echo "FATAL: Boot medium found, but system image is missing."
+    /bin/busybox sh
+}
+
+# Define where the new root filesystem will be
+ROOT="/mnt/rootfs" # Also needed for /usr/share/live/sec_init.sh
+
+# Run in bootable cd mode if requested via the kernel command line.
+if [ `grep -c "bootcd" /proc/cmdline` -ne "0" ]; then 
+    echo "Bootcd mode (bind mount) requested"; 
+    copyBindMount
+else
+    # Select LiveCD mode
+    unionMount # Might fall back to copyBindMount
+fi
+
+# Tell LFS to skip fsck during startup:
+> $ROOT/fastboot
+
+# Get rid of / manipulations in mountfs script:
+grep -v ' \/ ' $ROOT/etc/rc.d/init.d/mountfs > $ROOT/tmp/mountfs
+rm -f $ROOT/etc/rc.d/init.d/mountfs
+mv $ROOT/tmp/mountfs $ROOT/etc/rc.d/init.d/mountfs
+chmod +x $ROOT/etc/rc.d/init.d/mountfs
+
+# Move current mounts to directories accessible in the new root
+cd /mnt
+for dir in $(ls -1); do
+    if [ "${dir}" != "rootfs" ]; then
+        mkdir -p ${ROOT}/mnt/.boot/${dir}
+        mount --move /mnt/${dir} ${ROOT}/mnt/.boot/${dir}
+    fi
+done
+cd /
+
+# Run secondary initialization (if the system provides it)
+if [ -x ${ROOT}/usr/share/live/sec_init.sh ]; then
+    . ${ROOT}/usr/share/live/sec_init.sh
+fi
+
+# Clean up
+umount /proc
+
+# Switch to the new root and launch INIT!
+exec switch_root -c /dev/console ${ROOT} /sbin/init
